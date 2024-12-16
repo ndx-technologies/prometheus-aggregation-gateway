@@ -6,6 +6,7 @@ This service accepts Prometheus metrics, aggregates them, and exposes for `/metr
 
 - [x] no dependencies
 - [x] 300LOC
+- [x] 95% coverage 
 - [x] defensive validation
 - [x] histograms[^3] with fixed buckets
 - [ ] histograms with t-digest[^6][^7]
