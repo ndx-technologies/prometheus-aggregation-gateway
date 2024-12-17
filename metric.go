@@ -63,28 +63,32 @@ func ParseMetric(s string) (name string, labels map[string]string, err error) {
 		return "", nil, ErrEmptyName
 	}
 
-	labels = make(map[string]string)
-
 	i := strings.IndexByte(s, '{')
-	if i == -1 {
-		if s[len(s)-1] == '}' {
-			return "", nil, ErrInvalidLabel
-		}
-		return s, nil, nil
-	}
+	j := strings.IndexByte(s, '}')
 
-	if len(s) < 4 {
+	if (i == -1) != (j == -1) {
 		return "", nil, ErrInvalidLabel
 	}
 
-	if s[len(s)-1] != '}' {
+	if i == -1 && j == -1 {
+		return s, nil, nil
+	}
+
+	if i == 0 {
+		return "", nil, ErrInvalidLabel
+	}
+
+	if i >= j {
+		return "", nil, ErrInvalidLabel
+	}
+
+	if j != len(s)-1 {
 		return "", nil, ErrInvalidLabel
 	}
 
 	name = s[:i]
 
-	s = s[i+1 : len(s)-1]
-	for _, kv := range strings.Split(s, ",") {
+	for _, kv := range strings.Split(s[i+1:j], ",") {
 		p := strings.SplitN(kv, "=", 2)
 
 		if len(p) != 2 {
@@ -102,6 +106,9 @@ func ParseMetric(s string) (name string, labels map[string]string, err error) {
 			return "", nil, ErrLabelValueNotString
 		}
 
+		if labels == nil {
+			labels = make(map[string]string)
+		}
 		labels[label] = value[1 : len(p[1])-1]
 	}
 
