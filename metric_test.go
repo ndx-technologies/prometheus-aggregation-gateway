@@ -97,6 +97,15 @@ func TestParseMetric(t *testing.T) {
 				"b": "b",
 			},
 		},
+		{
+			s:    `http_request_count{code="200",method="GET",path="/api/v1/something/{id}"}`,
+			name: "http_request_count",
+			labels: map[string]string{
+				"code":   "200",
+				"method": "GET",
+				"path":   "/api/v1/something/{id}",
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.s, func(t *testing.T) {
@@ -127,13 +136,13 @@ func TestParseMetric_Error(t *testing.T) {
 		"{}",
 		"asdf{",
 		"asdf}",
-		"asdf{a=\"1}\"}",
 		"asdf}a=\"1}\"{",
 		"asd}f",
 		"asdf{,}",
 		"asdf{=}",
 		"asdf{=a}",
 		"asdf{a=}",
+		"asdf{a=\"b\"}a",
 		"asdf{a=a",
 		"asdf{a=a,",
 		"asdf{a=a,}",

@@ -64,7 +64,7 @@ func ParseMetric(s string) (name string, labels map[string]string, err error) {
 	}
 
 	i := strings.IndexByte(s, '{')
-	j := strings.IndexByte(s, '}')
+	j := strings.LastIndexByte(s, '}')
 
 	if (i == -1) != (j == -1) {
 		return "", nil, ErrInvalidLabel
