@@ -1,15 +1,17 @@
 ## prometheus aggregation gateway
 
-This service accepts Prometheus metrics, aggregates them, and exposes for `/metrics` endpoint[^4][^5] for scraping.
+This service accepts Prometheus metrics, validetes, aggregates, and exposes them ready for scraping in `/metrics` endpoint[^4][^5].
 
 ## Features
 
+- [x] consume batch by JSON http body (aggregation gateway)
+- [x] consume one by URL Query (hit counter)
 - [x] no dependencies
 - [x] 300LOC
-- [x] 95% coverage 
+- [x] 100% coverage 
 - [x] defensive validation
 - [x] histograms[^3] with fixed buckets
-- [ ] histograms with t-digest[^6][^7]
+- [ ] histograms with t-digest[^6]
 
 Bring it to your own http server
 
@@ -24,6 +26,7 @@ func main() {
 	s := pag.NewPromAggGatewayServer(config)
 
 	http.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	http.HandleFunc("GET /hit", s.ConsumeMetricFromURLQuery)
 	http.HandleFunc("POST /metrics", s.ConsumeMetrics)
 	http.HandleFunc("GET /metrics", s.GetMetrics)
 
@@ -33,6 +36,7 @@ func main() {
 
 ## ADR
 
+- `2025-04-04` URL Query consumes only single metric for simple API (histograms break down into multiple metric names, hence not accepted in URL Query)
 - `2024-12-16` not providing `max`, `min` aggregations, instead encouraging using histograms
 - `2024-12-03` not provide `avg` based on total `sum(x)` / `count(x)`, to reduce complexity in configuration, keep code flexible and small, and this can be done downstream anyways 
 - `2024-12-03` using `_count` in label naming to match open telemetry histograms
@@ -45,5 +49,4 @@ func main() {
 [^3]: https://prometheus.io/docs/practices/histograms/
 [^4]: https://prometheus.io/docs/practices/naming/
 [^5]: https://github.com/prometheus/docs/blob/main/content/docs/instrumenting/exposition_formats.md 
-[^6]: https://github.com/influxdata/tdigest
-[^7]: https://arxiv.org/abs/1902.04023
+[^6]: https://github.com/ndx-technologies/tdigest

@@ -2,7 +2,9 @@ package pag
 
 import (
 	"encoding/json"
+	"maps"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -43,11 +45,35 @@ func NewPromAggGatewayServer(config PromAggGatewayServerConfig) PromAggGatewaySe
 
 	return PromAggGatewayServer{
 		config:               config,
-		metrics:              make(map[string]map[string]float64),
-		mtx:                  &sync.RWMutex{},
 		labelValues:          labelValues,
 		labelValuesForMetric: labelValuesForMetric,
+
+		metrics: make(map[string]map[string]float64),
+		mtx:     &sync.RWMutex{},
 	}
+}
+
+func (s PromAggGatewayServer) GetMetrics(w http.ResponseWriter, r *http.Request) {
+	defer s.clear()
+
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	w.WriteHeader(http.StatusOK)
+
+	for metric, config := range s.config.Metrics {
+		PrintMetric(w, s.config.MetricAppendPrefix, metric, config, s.metrics)
+	}
+}
+
+func (s PromAggGatewayServer) clear() {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	for k := range s.metrics {
+		clear(s.metrics[k])
+	}
+	clear(s.metrics)
 }
 
 type MetricsRequest struct {
@@ -55,6 +81,7 @@ type MetricsRequest struct {
 	Labels  map[string]string  `json:"labels"`  // additional labels to be added to all metrics
 }
 
+// ConsumeMetrics from body of HTTP request
 func (s PromAggGatewayServer) ConsumeMetrics(w http.ResponseWriter, r *http.Request) {
 	var req MetricsRequest
 
@@ -64,8 +91,7 @@ func (s PromAggGatewayServer) ConsumeMetrics(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
+	metrics := make(map[string]map[string]float64)
 
 	for name, value := range req.Metrics {
 		metric, labels, err := ParseMetric(name)
@@ -84,9 +110,7 @@ func (s PromAggGatewayServer) ConsumeMetrics(w http.ResponseWriter, r *http.Requ
 		if labels == nil {
 			labels = make(map[string]string)
 		}
-		for k, v := range req.Labels {
-			labels[k] = v
-		}
+		maps.Copy(labels, req.Labels)
 
 		for k, v := range labels {
 			if !(s.labelValues[k][v] || s.labelValuesForMetric[metric][k][v]) {
@@ -95,30 +119,71 @@ func (s PromAggGatewayServer) ConsumeMetrics(w http.ResponseWriter, r *http.Requ
 		}
 
 		if config.Type == Histogram && strings.HasSuffix(metric, "_bucket") && labels["le"] == "" {
+			http.Error(w, "histogram bucket metric must have le label", http.StatusBadRequest)
+			return
+		}
+
+		if _, ok := metrics[metric]; !ok {
+			metrics[metric] = make(map[string]float64)
+		}
+		metrics[metric][EncodeLabels(labels)] += value
+	}
+
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	for metric, vs := range metrics {
+		if _, ok := s.metrics[metric]; !ok {
+			s.metrics[metric] = vs
 			continue
 		}
 
-		if _, ok := s.metrics[metric]; !ok {
-			s.metrics[metric] = make(map[string]float64)
+		for l, v := range vs {
+			s.metrics[metric][l] += v
 		}
-		s.metrics[metric][EncodeLabels(labels)] += value
 	}
 
 	w.WriteHeader(http.StatusOK)
 }
 
-func (s PromAggGatewayServer) GetMetrics(w http.ResponseWriter, r *http.Request) {
+func (s PromAggGatewayServer) ConsumeMetricFromURLQuery(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+
+	var v float64 = 1
+	if vs := query.Get("v"); len(vs) > 0 {
+		vv, err := strconv.ParseFloat(vs, 64)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		v = vv
+	}
+
+	metric, labels, err := ParseMetric(query.Get("m"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if _, ok := s.config.Metrics[metric]; !ok {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	for k, v := range labels {
+		if !(s.labelValues[k][v] || s.labelValuesForMetric[metric][k][v]) {
+			delete(labels, k)
+		}
+	}
+
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
+	if _, ok := s.metrics[metric]; !ok {
+		s.metrics[metric] = make(map[string]float64)
+	}
+
+	s.metrics[metric][EncodeLabels(labels)] += v
+
 	w.WriteHeader(http.StatusOK)
-
-	for metric, config := range s.config.Metrics {
-		PrintMetric(w, s.config.MetricAppendPrefix, metric, config, s.metrics)
-	}
-
-	for k := range s.metrics {
-		clear(s.metrics[k])
-	}
-	clear(s.metrics)
 }
