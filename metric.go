@@ -1,6 +1,7 @@
 package pag
 
 import (
+	"bufio"
 	"errors"
 	"io"
 	"sort"
@@ -88,7 +89,7 @@ func ParseMetric(s string) (name string, labels map[string]string, err error) {
 
 	name = s[:i]
 
-	for _, kv := range strings.Split(s[i+1:j], ",") {
+	for kv := range strings.SplitSeq(s[i+1:j], ",") {
 		p := strings.SplitN(kv, "=", 2)
 
 		if len(p) != 2 {
@@ -115,35 +116,46 @@ func ParseMetric(s string) (name string, labels map[string]string, err error) {
 	return name, labels, nil
 }
 
-func PrintMetric(w io.Writer, prefix string, name string, config MetricConfig, values map[string]map[string]float64) (count int) {
-	names := []string{name}
-
+func PrintMetric(w io.Writer, prefix string, name string, config MetricConfig, values map[string]map[string]float64) {
 	if config.Type == Histogram {
-		names = []string{name + "_bucket", name + "_sum", name + "_count"}
-	}
-
-	for _, m := range names {
-		for l, v := range values[m] {
-			if count == 0 {
-				w.Write([]byte("# HELP " + prefix + name + " " + config.Help + "\n"))
-				w.Write([]byte("# TYPE " + prefix + name + " " + config.Type.String() + "\n"))
-			}
-
-			w.Write([]byte(prefix + m))
-			w.Write([]byte(l))
-			w.Write([]byte(" "))
-			w.Write([]byte(strconv.FormatFloat(v, 'f', -1, 64)))
-
-			w.Write([]byte("\n"))
-			count++
+		if len(values[name+"_bucket"]) == 0 {
+			return
+		}
+	} else {
+		if len(values[name]) == 0 {
+			return
 		}
 	}
 
-	if count > 0 {
-		w.Write([]byte("\n\n"))
+	b := bufio.NewWriterSize(w, (len(prefix)+len(name)+10)*3+len(values[name])*8)
+
+	b.WriteString("# HELP " + prefix + name + " " + config.Help + "\n")
+	b.WriteString("# TYPE " + prefix + name + " " + config.Type.String() + "\n")
+
+	if config.Type == Histogram {
+		printMetric(b, prefix, name, "_bucket", values)
+		printMetric(b, prefix, name, "_sum", values)
+		printMetric(b, prefix, name, "_count", values)
+	} else {
+		printMetric(b, prefix, name, "", values)
 	}
 
-	return count
+	b.WriteRune('\n')
+	b.WriteRune('\n')
+
+	b.Flush()
+}
+
+func printMetric(b *bufio.Writer, prefix, name, suffix string, values map[string]map[string]float64) {
+	for l, v := range values[name+suffix] {
+		b.WriteString(prefix)
+		b.WriteString(name)
+		b.WriteString(suffix)
+		b.WriteString(l)
+		b.WriteRune(' ')
+		b.Write(strconv.AppendFloat(b.AvailableBuffer(), v, 'f', -1, 64))
+		b.WriteRune('\n')
+	}
 }
 
 var histSuffixes = [...]string{"_count", "_sum", "_bucket"}

@@ -2,6 +2,7 @@ package pag_test
 
 import (
 	"bytes"
+	"io"
 	"maps"
 	"sort"
 	"strconv"
@@ -263,5 +264,23 @@ func TestStripHistMetricName(t *testing.T) {
 		if s != tc.m {
 			t.Errorf("s(%v) != exp(%v)", s, tc.m)
 		}
+	}
+}
+
+func BenchmarkPrintMetric(b *testing.B) {
+	config := pag.MetricConfig{
+		Help: "some long description about metric",
+		Type: pag.Counter,
+	}
+
+	values := map[string]map[string]float64{
+		"my_metric_name": {
+			"{blablabla=10}":           11,
+			"{blablabla=11,blabla=11}": 11,
+		},
+	}
+
+	for b.Loop() {
+		pag.PrintMetric(io.Discard, "something_prefix", "my_metric_name", config, values)
 	}
 }
