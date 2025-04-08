@@ -5,9 +5,9 @@ This service accepts Prometheus metrics, validetes, aggregates, and exposes them
 ## Features
 
 - [x] consume batch by JSON http body (aggregation gateway)
-- [x] consume one by URL Query (hit counter)
+- [x] consume one by URL Path or Query (hit counter)
 - [x] no dependencies
-- [x] 300LOC
+- [x] 400LOC
 - [x] 100% coverage 
 - [x] defensive validation
 - [x] histograms[^3] with fixed buckets
