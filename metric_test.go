@@ -225,6 +225,8 @@ func TestPrintMetric(t *testing.T) {
 				``,
 			}, "\n"),
 		},
+		{name: "http_request_count"},
+		{name: "http_request_count_bucket", config: pag.MetricConfig{Type: pag.Histogram}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

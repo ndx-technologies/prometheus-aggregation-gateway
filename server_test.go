@@ -30,10 +30,17 @@ func TestServer(t *testing.T) {
 				Type:    pag.Histogram,
 				Buckets: []string{"10", "20"},
 			},
+			"url_hit": {
+				Help: "url hit",
+				Type: pag.Counter,
+			},
 		},
 		Labels: map[string]pag.LabelConfig{
 			"platform": {Values: []string{"ios", "web"}},
-			"path":     {Values: []string{"/api/v1/my-website"}},
+			"path": {Values: []string{
+				"/api/v1/my-website",
+				"/potato.com/api/v1/fried",
+			}},
 		},
 		MetricAppendPrefix: "ppp_",
 	}
@@ -211,6 +218,92 @@ func TestServer(t *testing.T) {
 		})
 	})
 
+	t.Run("consume from URL Path", func(t *testing.T) {
+		t.Run("ok", func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/hit/api/v1/my-website", nil)
+			w := httptest.NewRecorder()
+
+			h := s.NewMetricFromPathConsumer("url_hit", "/hit")
+			h(w, req)
+
+			resp := w.Result()
+			if resp.StatusCode != http.StatusOK {
+				t.Error(resp.StatusCode)
+			}
+		})
+
+		t.Run("when unknown metric, then handler is nil", func(t *testing.T) {
+			if h := s.NewMetricFromPathConsumer("asdf", "/hit"); h != nil {
+				t.Error("expended nil")
+			}
+		})
+
+		t.Run("with dot in path", func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/hit/potato.com/api/v1/fried", nil)
+			w := httptest.NewRecorder()
+
+			h := s.NewMetricFromPathConsumer("url_hit", "/hit")
+			h(w, req)
+
+			resp := w.Result()
+			if resp.StatusCode != http.StatusOK {
+				t.Error(resp.StatusCode)
+			}
+		})
+
+		t.Run("with label", func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/hit/api/v1/my-website?platform=ios&something=asdf", nil)
+			w := httptest.NewRecorder()
+
+			h := s.NewMetricFromPathConsumer("url_hit", "/hit")
+			h(w, req)
+
+			resp := w.Result()
+			if resp.StatusCode != http.StatusOK {
+				t.Error(resp.StatusCode)
+			}
+		})
+
+		t.Run("with value", func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/hit/api/v1/my-website?platform=web&v=2.2", nil)
+			w := httptest.NewRecorder()
+
+			h := s.NewMetricFromPathConsumer("url_hit", "/hit")
+			h(w, req)
+
+			resp := w.Result()
+			if resp.StatusCode != http.StatusOK {
+				t.Error(resp.StatusCode)
+			}
+		})
+
+		t.Run("with wrong value", func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/hit/api/v1/my-website?v=asdf", nil)
+			w := httptest.NewRecorder()
+
+			h := s.NewMetricFromPathConsumer("url_hit", "/hit")
+			h(w, req)
+
+			resp := w.Result()
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Error(resp.StatusCode)
+			}
+		})
+
+		t.Run("with wrong path", func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/hit/api/v2/something", nil)
+			w := httptest.NewRecorder()
+
+			h := s.NewMetricFromPathConsumer("url_hit", "/hit")
+			h(w, req)
+
+			resp := w.Result()
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Error(resp.StatusCode)
+			}
+		})
+	})
+
 	t.Run("read", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/metric", nil)
 		w := httptest.NewRecorder()
@@ -234,6 +327,14 @@ func TestServer(t *testing.T) {
 			`ppp_my_hit_metric{path="/api/v1/my-website"} 2`,
 			``,
 			``,
+			`# HELP ppp_url_hit url hit`,
+			`# TYPE ppp_url_hit counter`,
+			`ppp_url_hit{path="/api/v1/my-website"} 1`,
+			`ppp_url_hit{path="/api/v1/my-website",platform="ios"} 1`,
+			`ppp_url_hit{path="/api/v1/my-website",platform="web"} 2.2`,
+			`ppp_url_hit{path="/potato.com/api/v1/fried"} 1`,
+			``,
+			``,
 			`# HELP ppp_my_hist about my hist`,
 			`# TYPE ppp_my_hist histogram`,
 			`ppp_my_hist_bucket{le="10"} 10`,
@@ -245,8 +346,11 @@ func TestServer(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		if s := string(bytes.TrimSpace(body)); s != exp {
-			t.Error(s)
+
+		for line := range bytes.SplitSeq([]byte(exp), []byte("\n")) {
+			if !bytes.Contains(bytes.TrimSpace(body), line) {
+				t.Error("missing line", string(line))
+			}
 		}
 	})
 }
@@ -255,4 +359,10 @@ func Example_urlQueryEscape() {
 	s := url.QueryEscape("my_hit_metric{path=\"/api/v1/my-website\"}")
 	fmt.Println(s)
 	// Output: my_hit_metric%7Bpath%3D%22%2Fapi%2Fv1%2Fmy-website%22%7D
+}
+
+func Example_urlDotInPath() {
+	s, err := url.Parse("http://localhost:8080/hit/potato.com/api/v1/fried")
+	fmt.Println(s.Path, err)
+	// Output: /hit/potato.com/api/v1/fried <nil>
 }

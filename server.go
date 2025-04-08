@@ -187,3 +187,56 @@ func (s PromAggGatewayServer) ConsumeMetricFromURLQuery(w http.ResponseWriter, r
 
 	w.WriteHeader(http.StatusOK)
 }
+
+// NewMetricFromPathConsumer creates a HTTP handler that converts URL path after prefix into metric label and converts query parameters into labels.
+// Query parameter "v" is reserved for value and defaults to 1.
+// This is convenient when path metric name can be encoded in same charset as URL path.
+func (s PromAggGatewayServer) NewMetricFromPathConsumer(metric string, skipPrefix string) func(w http.ResponseWriter, r *http.Request) {
+	config, ok := s.config.Metrics[metric]
+	if !ok || config.Type != Counter {
+		return nil
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+
+		var v float64 = 1
+		if vs := query.Get("v"); len(vs) > 0 {
+			vv, err := strconv.ParseFloat(vs, 64)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			delete(query, "v")
+			v = vv
+		}
+
+		path := strings.TrimPrefix(r.URL.Path, skipPrefix)
+		if !(s.labelValues["path"][path] || s.labelValuesForMetric[metric]["path"][path]) {
+			http.Error(w, "URL Path is not allowed label", http.StatusBadRequest)
+			return
+		}
+
+		labels := map[string]string{"path": path}
+
+		for k, vs := range query {
+			if len(vs) > 0 {
+				v := vs[0]
+				if s.labelValues[k][v] || s.labelValuesForMetric[metric][k][v] {
+					labels[k] = v
+				}
+			}
+		}
+
+		s.mtx.Lock()
+		defer s.mtx.Unlock()
+
+		if _, ok := s.metrics[metric]; !ok {
+			s.metrics[metric] = make(map[string]float64)
+		}
+
+		s.metrics[metric][EncodeLabels(labels)] += v
+
+		w.WriteHeader(http.StatusOK)
+	}
+}
