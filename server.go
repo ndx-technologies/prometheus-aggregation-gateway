@@ -158,30 +158,40 @@ func (s PromAggGatewayServer) ConsumeMetrics(w http.ResponseWriter, r *http.Requ
 
 func (s PromAggGatewayServer) incHistMetricFromGauge(metric string, value float64, config MetricConfig, labels map[string]string, metrics map[string]map[string]float64) {
 	// update buckets
+	m := metric + "_bucket"
 	for _, bucket := range config.Buckets {
-		if value <= bucket {
-			labels["le"] = strconv.FormatFloat(bucket, 'f', -1, 64)
+		if _, ok := metrics[m]; !ok {
+			metrics[m] = make(map[string]float64)
+		}
 
-			if _, ok := metrics[metric+"_bucket"]; !ok {
-				metrics[metric+"_bucket"] = make(map[string]float64)
-			}
-			metrics[metric+"_bucket"][EncodeLabels(labels)]++
-			break
+		labels["le"] = strconv.FormatFloat(bucket, 'f', -1, 64)
+		l := EncodeLabels(labels)
+
+		if _, ok := metrics[m][l]; !ok {
+			metrics[m][l] = 0
+		}
+
+		if value <= bucket {
+			metrics[m][l]++
 		}
 	}
 
 	// update overall counters for hist metric
 	delete(labels, "le")
+	l := EncodeLabels(labels)
 
-	if _, ok := metrics[metric+"_count"]; !ok {
-		metrics[metric+"_count"] = make(map[string]float64)
+	mcount := metric + "_count"
+	msum := metric + "_sum"
+
+	if _, ok := metrics[mcount]; !ok {
+		metrics[mcount] = make(map[string]float64)
 	}
-	if _, ok := metrics[metric+"_sum"]; !ok {
-		metrics[metric+"_sum"] = make(map[string]float64)
+	if _, ok := metrics[msum]; !ok {
+		metrics[msum] = make(map[string]float64)
 	}
 
-	metrics[metric+"_count"][EncodeLabels(labels)]++
-	metrics[metric+"_sum"][EncodeLabels(labels)] += value
+	metrics[mcount][l]++
+	metrics[msum][l] += value
 
 }
 
