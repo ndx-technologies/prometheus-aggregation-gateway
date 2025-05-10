@@ -110,16 +110,7 @@ func (s PromAggGatewayServer) ConsumeMetrics(w http.ResponseWriter, r *http.Requ
 			}
 		}
 
-		if labels == nil {
-			labels = make(map[string]string)
-		}
-		maps.Copy(labels, req.Labels)
-
-		for k, v := range labels {
-			if !(s.labelValues[k][v] || s.labelValuesForMetric[metric][k][v]) {
-				delete(labels, k)
-			}
-		}
+		labels = s.processLabels(metric, labels, req.Labels)
 
 		if config.Type == Histogram {
 			if strings.HasSuffix(metric, "_bucket") && labels["le"] == "" {
@@ -154,6 +145,32 @@ func (s PromAggGatewayServer) ConsumeMetrics(w http.ResponseWriter, r *http.Requ
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func (s PromAggGatewayServer) processLabels(metric string, labels, reqLabels map[string]string) map[string]string {
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	maps.Copy(labels, reqLabels)
+
+	for l, v := range labels {
+		if l == "le" {
+			f, err := strconv.ParseFloat(v, 64)
+			if err != nil {
+				delete(labels, l)
+				continue
+			}
+			labels[l] = strconv.FormatFloat(f, 'f', -1, 64)
+		}
+	}
+
+	for k, v := range labels {
+		if !(s.labelValues[k][v] || s.labelValuesForMetric[metric][k][v]) {
+			delete(labels, k)
+		}
+	}
+
+	return labels
 }
 
 func (s PromAggGatewayServer) incHistMetricFromGauge(metric string, value float64, config MetricConfig, labels map[string]string, metrics map[string]map[string]float64) {

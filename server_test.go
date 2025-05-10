@@ -65,11 +65,7 @@ func TestServer(t *testing.T) {
 
 		t.Run("histogram", func(t *testing.T) {
 			t.Run("from gague", func(t *testing.T) {
-				req := httptest.NewRequest("POST", "/metrics", strings.NewReader(`{
-					"metrics": {
-						"my_hist": 5
-					}
-				}`))
+				req := httptest.NewRequest("POST", "/metrics", strings.NewReader(`{"metrics": {"my_hist": 5}}`))
 				w := httptest.NewRecorder()
 				s.ConsumeMetrics(w, req)
 
@@ -83,7 +79,7 @@ func TestServer(t *testing.T) {
 			t.Run("basic", func(t *testing.T) {
 				req := httptest.NewRequest("POST", "/metrics", strings.NewReader(`{
 					"metrics": {
-						"my_hist_bucket{le=\"10\"}": 10,
+						"my_hist_bucket{le=\"10.0\"}": 10,
 						"my_hist_sum": 20,
 						"my_hist_count": 5
 					}
@@ -98,12 +94,31 @@ func TestServer(t *testing.T) {
 				}
 			})
 
+			t.Run("bad le", func(t *testing.T) {
+				tests := []string{
+					`{"metrics": {"my_hist_bucket{le=\"asdf\"}": 10}}`,
+					`{"metrics": {"my_hist_bucket{le=\"10000\"}": 10}}`,
+					`{"metrics": {"my_hist_bucket{le=\"-10\"}": 10}}`,
+					`{"metrics": {"my_hist_bucket{le=\"0\"}": 10}}`,
+				}
+				for _, tc := range tests {
+					t.Run(tc, func(t *testing.T) {
+						req := httptest.NewRequest("POST", "/metrics", strings.NewReader(tc))
+
+						w := httptest.NewRecorder()
+						s.ConsumeMetrics(w, req)
+
+						resp := w.Result()
+						if resp.StatusCode != http.StatusBadRequest {
+							b, _ := io.ReadAll(resp.Body)
+							t.Error(resp.StatusCode, string(b))
+						}
+					})
+				}
+			})
+
 			t.Run("wrong bucket metric", func(t *testing.T) {
-				req := httptest.NewRequest("POST", "/metrics", strings.NewReader(`{
-					"metrics": {
-						"my_hist_bucket{something=\"123\"}": 10
-					}
-				}`))
+				req := httptest.NewRequest("POST", "/metrics", strings.NewReader(`{"metrics": {"my_hist_bucket{something=\"123\"}": 10}}`))
 				w := httptest.NewRecorder()
 				s.ConsumeMetrics(w, req)
 
