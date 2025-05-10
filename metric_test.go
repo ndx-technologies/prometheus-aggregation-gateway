@@ -48,7 +48,7 @@ func TestLabelValues(t *testing.T) {
 		{
 			c: pag.MetricConfig{
 				Type:    pag.Histogram,
-				Buckets: []float64{0.1, 0.2, math.Inf(1)},
+				Buckets: []float64{0.1, 0.2},
 			},
 			labels: map[string]map[string]bool{
 				"le": {
@@ -64,6 +64,8 @@ func TestLabelValues(t *testing.T) {
 	}
 	for i, tc := range tests {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			tc.c.Init()
+
 			labels := tc.c.LabelValues()
 			if !maps.Equal(tc.labels["le"], labels["le"]) {
 				t.Errorf("labels(%v) != exp(%v)", labels, tc.labels)

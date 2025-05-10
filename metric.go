@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"errors"
 	"io"
+	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,7 +31,19 @@ type MetricConfig struct {
 	Help             string     `json:"help" yaml:"help"`
 	Type             MetricType `json:"type" yaml:"type"`
 	ComputeFromGauge bool       `json:"compute_from_gauge" yaml:"compute_from_gauge"` // if it is histogram, then value will be aggregated into histogram at these buckets
-	Buckets          []float64  `json:"buckets" yaml:"buckets"`
+	Buckets          []float64  `json:"buckets" yaml:"buckets"`                       // +Inf bucket is automatically included, this is because JSON/YAML spec does not define +Inf
+}
+
+func (s *MetricConfig) Init() {
+	if len(s.Buckets) > 0 {
+		slices.Sort(s.Buckets)
+
+		inf := math.Inf(1)
+
+		if s.Buckets[len(s.Buckets)-1] != inf {
+			s.Buckets = append(s.Buckets, inf)
+		}
+	}
 }
 
 func (s MetricConfig) LabelValues() map[string]map[string]bool {
