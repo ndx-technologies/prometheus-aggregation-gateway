@@ -118,9 +118,16 @@ func (s PromAggGatewayServer) ConsumeMetrics(w http.ResponseWriter, r *http.Requ
 			}
 		}
 
-		if config.Type == Histogram && strings.HasSuffix(metric, "_bucket") && labels["le"] == "" {
-			http.Error(w, "histogram bucket metric must have le label", http.StatusBadRequest)
-			return
+		if config.Type == Histogram {
+			if strings.HasSuffix(metric, "_bucket") && labels["le"] == "" {
+				http.Error(w, "histogram _bucket metric must have 'le' label", http.StatusBadRequest)
+				return
+			}
+		}
+
+		if config.Type == Histogram && config.ComputeFromGauge && StripHistSuffix(metric) == metric {
+			s.incHistMetricFromGauge(metric, value, config, labels, metrics)
+			continue
 		}
 
 		if _, ok := metrics[metric]; !ok {
@@ -144,6 +151,35 @@ func (s PromAggGatewayServer) ConsumeMetrics(w http.ResponseWriter, r *http.Requ
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func (s PromAggGatewayServer) incHistMetricFromGauge(metric string, value float64, config MetricConfig, labels map[string]string, metrics map[string]map[string]float64) {
+	// update buckets
+	for _, bucket := range config.Buckets {
+		if value <= bucket {
+			labels["le"] = strconv.FormatFloat(bucket, 'f', -1, 64)
+
+			if _, ok := metrics[metric+"_bucket"]; !ok {
+				metrics[metric+"_bucket"] = make(map[string]float64)
+			}
+			metrics[metric+"_bucket"][EncodeLabels(labels)]++
+			break
+		}
+	}
+
+	// update overall counters for hist metric
+	delete(labels, "le")
+
+	if _, ok := metrics[metric+"_count"]; !ok {
+		metrics[metric+"_count"] = make(map[string]float64)
+	}
+	if _, ok := metrics[metric+"_sum"]; !ok {
+		metrics[metric+"_sum"] = make(map[string]float64)
+	}
+
+	metrics[metric+"_count"][EncodeLabels(labels)]++
+	metrics[metric+"_sum"][EncodeLabels(labels)] += value
+
 }
 
 func (s PromAggGatewayServer) ConsumeMetricFromURLQuery(w http.ResponseWriter, r *http.Request) {

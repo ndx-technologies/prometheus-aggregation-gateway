@@ -26,9 +26,10 @@ func TestServer(t *testing.T) {
 				Type: pag.Counter,
 			},
 			"my_hist": {
-				Help:    "about my hist",
-				Type:    pag.Histogram,
-				Buckets: []string{"10", "20"},
+				Help:             "about my hist",
+				Type:             pag.Histogram,
+				ComputeFromGauge: true,
+				Buckets:          []float64{10, 20},
 			},
 			"url_hit": {
 				Help: "url hit",
@@ -62,36 +63,55 @@ func TestServer(t *testing.T) {
 			}
 		})
 
-		t.Run("with histogram", func(t *testing.T) {
-			req := httptest.NewRequest("POST", "/metrics", strings.NewReader(`{
-				"metrics": {
-					"my_hist_bucket{le=\"10\"}": 10,
-					"my_hist_sum": 20,
-					"my_hist_count": 5
+		t.Run("histogram", func(t *testing.T) {
+			t.Run("from gague", func(t *testing.T) {
+				req := httptest.NewRequest("POST", "/metrics", strings.NewReader(`{
+					"metrics": {
+						"my_hist": 5
+					}
+				}`))
+				w := httptest.NewRecorder()
+				s.ConsumeMetrics(w, req)
+
+				resp := w.Result()
+				if resp.StatusCode != http.StatusOK {
+					b, _ := io.ReadAll(resp.Body)
+					t.Error(resp.StatusCode, string(b))
 				}
-			}`))
-			w := httptest.NewRecorder()
-			s.ConsumeMetrics(w, req)
+			})
 
-			resp := w.Result()
-			if resp.StatusCode != http.StatusOK {
-				t.Error(resp.StatusCode)
-			}
-		})
+			t.Run("basic", func(t *testing.T) {
+				req := httptest.NewRequest("POST", "/metrics", strings.NewReader(`{
+					"metrics": {
+						"my_hist_bucket{le=\"10\"}": 10,
+						"my_hist_sum": 20,
+						"my_hist_count": 5
+					}
+				}`))
+				w := httptest.NewRecorder()
+				s.ConsumeMetrics(w, req)
 
-		t.Run("with histogram wrong bucket metric", func(t *testing.T) {
-			req := httptest.NewRequest("POST", "/metrics", strings.NewReader(`{
-				"metrics": {
-					"my_hist_bucket{something=\"123\"}": 10
+				resp := w.Result()
+				if resp.StatusCode != http.StatusOK {
+					b, _ := io.ReadAll(resp.Body)
+					t.Error(resp.StatusCode, string(b))
 				}
-			}`))
-			w := httptest.NewRecorder()
-			s.ConsumeMetrics(w, req)
+			})
 
-			resp := w.Result()
-			if resp.StatusCode != http.StatusBadRequest {
-				t.Error(resp.StatusCode)
-			}
+			t.Run("wrong bucket metric", func(t *testing.T) {
+				req := httptest.NewRequest("POST", "/metrics", strings.NewReader(`{
+					"metrics": {
+						"my_hist_bucket{something=\"123\"}": 10
+					}
+				}`))
+				w := httptest.NewRecorder()
+				s.ConsumeMetrics(w, req)
+
+				resp := w.Result()
+				if resp.StatusCode != http.StatusBadRequest {
+					t.Error(resp.StatusCode)
+				}
+			})
 		})
 
 		t.Run("with label", func(t *testing.T) {
@@ -337,9 +357,9 @@ func TestServer(t *testing.T) {
 			``,
 			`# HELP ppp_my_hist about my hist`,
 			`# TYPE ppp_my_hist histogram`,
-			`ppp_my_hist_bucket{le="10"} 10`,
-			`ppp_my_hist_sum 20`,
-			`ppp_my_hist_count 5`,
+			`ppp_my_hist_bucket{le="10"} 11`,
+			`ppp_my_hist_sum 25`,
+			`ppp_my_hist_count 6`,
 		}, "\n")
 
 		body, err := io.ReadAll(resp.Body)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"maps"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -47,7 +48,7 @@ func TestLabelValues(t *testing.T) {
 		{
 			c: pag.MetricConfig{
 				Type:    pag.Histogram,
-				Buckets: []string{"0.1", "0.2", "+Inf"},
+				Buckets: []float64{0.1, 0.2, math.Inf(1)},
 			},
 			labels: map[string]map[string]bool{
 				"le": {
@@ -197,7 +198,7 @@ func TestPrintMetric(t *testing.T) {
 			config: pag.MetricConfig{
 				Help:    "some help",
 				Type:    "histogram",
-				Buckets: []string{"0.1", "0.2", "+Inf"},
+				Buckets: []float64{0.1, 0.2, math.Inf(1)},
 			},
 			values: map[string]map[string]float64{
 				"http_request_duration_sum": {

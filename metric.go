@@ -26,16 +26,17 @@ const (
 )
 
 type MetricConfig struct {
-	Help    string     `json:"help" yaml:"help"`
-	Type    MetricType `json:"type" yaml:"type"`
-	Buckets []string   `json:"buckets" yaml:"buckets"`
+	Help             string     `json:"help" yaml:"help"`
+	Type             MetricType `json:"type" yaml:"type"`
+	ComputeFromGauge bool       `json:"compute_from_gauge" yaml:"compute_from_gauge"` // if it is histogram, then value will be aggregated into histogram at these buckets
+	Buckets          []float64  `json:"buckets" yaml:"buckets"`
 }
 
 func (s MetricConfig) LabelValues() map[string]map[string]bool {
 	if s.Type == Histogram && len(s.Buckets) > 0 {
 		vs := make(map[string]bool, len(s.Buckets))
 		for _, b := range s.Buckets {
-			vs[b] = true
+			vs[strconv.FormatFloat(b, 'f', -1, 64)] = true
 		}
 		return map[string]map[string]bool{"le": vs}
 	}
