@@ -41,6 +41,9 @@ func NewPromAggGatewayServer(config PromAggGatewayServerConfig) PromAggGatewaySe
 		if c.Type == Histogram {
 			labelValuesForMetric[m+"_bucket"] = c.LabelValues()
 		}
+
+		c.Init()
+		config.Metrics[m] = c
 	}
 
 	return PromAggGatewayServer{
