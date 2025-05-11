@@ -10,7 +10,7 @@ This service accepts Prometheus metrics, validetes, aggregates, and exposes them
 - [x] 400LOC
 - [x] 100% coverage 
 - [x] defensive validation
-- [x] histograms[^3] with fixed buckets
+- [x] histograms[^3]
 - [ ] quantiles via t-digest[^6]
 
 Bring it to your own http server
