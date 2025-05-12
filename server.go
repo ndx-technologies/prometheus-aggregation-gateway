@@ -18,7 +18,8 @@ type LabelConfig struct {
 type PromAggGatewayServerConfig struct {
 	Metrics            map[string]MetricConfig `json:"metrics" yaml:"metrics"`
 	Labels             map[string]LabelConfig  `json:"labels" yaml:"labels"`
-	LabelLanguage      string                  `json:"label_language" yaml:"label_language"`
+	LabelLanguage      string                  `json:"label_language" yaml:"label_language"`     // set to non-empty value to extract from Accept-Language header
+	LabelUserAgent     string                  `json:"label_user_agent" yaml:"label_user_agent"` // set to non-empty and specify allowed values to extract from User-Agent header
 	MetricAppendPrefix string                  `json:"metric_append_prefix" yaml:"metric_append_prefix"`
 }
 
@@ -53,6 +54,13 @@ func NewPromAggGatewayServer(config PromAggGatewayServerConfig) PromAggGatewaySe
 		labelValues[labelLanguage] = make(map[string]bool, len(language.All))
 		for _, l := range language.All {
 			labelValues[labelLanguage][l.String()] = true
+		}
+	}
+
+	if labelUserAgent := config.LabelUserAgent; labelUserAgent != "" {
+		// disable if missing validation
+		if v, ok := labelValues[labelUserAgent]; !ok || len(v) == 0 {
+			config.LabelUserAgent = ""
 		}
 	}
 
@@ -104,11 +112,12 @@ func (s PromAggGatewayServer) ConsumeMetrics(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if labelLanguage := s.config.LabelLanguage; labelLanguage != "" {
-		if l := languageFromHeaders(r); l != language.Unknown {
-			req.Labels[labelLanguage] = l.String()
-		}
+	if req.Labels == nil {
+		req.Labels = make(map[string]string)
 	}
+
+	s.processLanguage(r, req.Labels)
+	s.processUserAgent(r, req.Labels)
 
 	metrics := make(map[string]map[string]float64)
 
@@ -252,17 +261,14 @@ func (s PromAggGatewayServer) ConsumeMetricFromURLQuery(w http.ResponseWriter, r
 		return
 	}
 
-	if labelLanguage := s.config.LabelLanguage; labelLanguage != "" {
-		if l := languageFromHeaders(r); l != language.Unknown {
-			labels[labelLanguage] = l.String()
-		}
+	if labels == nil {
+		labels = make(map[string]string)
 	}
 
-	for k, v := range labels {
-		if !(s.labelValues[k][v] || s.labelValuesForMetric[metric][k][v]) {
-			delete(labels, k)
-		}
-	}
+	s.processLanguage(r, labels)
+	s.processUserAgent(r, labels)
+
+	s.processLabels(metric, labels, nil)
 
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
@@ -309,18 +315,14 @@ func (s PromAggGatewayServer) NewMetricFromPathConsumer(metric string, skipPrefi
 
 		for k, vs := range query {
 			if len(vs) > 0 {
-				v := vs[0]
-				if s.labelValues[k][v] || s.labelValuesForMetric[metric][k][v] {
-					labels[k] = v
-				}
+				labels[k] = vs[0]
 			}
 		}
 
-		if labelLanguage := s.config.LabelLanguage; labelLanguage != "" {
-			if l := languageFromHeaders(r); l != language.Unknown {
-				labels[labelLanguage] = l.String()
-			}
-		}
+		s.processLanguage(r, labels)
+		s.processUserAgent(r, labels)
+
+		s.processLabels(metric, labels, nil)
 
 		s.mtx.Lock()
 		defer s.mtx.Unlock()
@@ -332,6 +334,25 @@ func (s PromAggGatewayServer) NewMetricFromPathConsumer(metric string, skipPrefi
 		s.metrics[metric][EncodeLabels(labels)] += v
 
 		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func (s PromAggGatewayServer) processLanguage(r *http.Request, labels map[string]string) {
+	if labelLanguage := s.config.LabelLanguage; labelLanguage != "" {
+		if l := languageFromHeaders(r); l != language.Unknown {
+			labels[labelLanguage] = l.String()
+		}
+	}
+}
+
+func (s PromAggGatewayServer) processUserAgent(r *http.Request, labels map[string]string) {
+	if labelUserAgent := s.config.LabelUserAgent; labelUserAgent != "" {
+		for _, product := range ParseUserAgent(r.UserAgent()) {
+			// there are multiple products in User-Agent header, but we have single label only, so possible label detector will reject them. find best match immediately
+			if s.labelValues[labelUserAgent][product] {
+				labels[labelUserAgent] = product
+			}
+		}
 	}
 }
 

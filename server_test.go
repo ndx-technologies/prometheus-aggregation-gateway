@@ -16,7 +16,8 @@ import (
 
 func TestServer(t *testing.T) {
 	config := pag.PromAggGatewayServerConfig{
-		LabelLanguage: "lang",
+		LabelLanguage:  "lang",
+		LabelUserAgent: "user_agent",
 		Metrics: map[string]pag.MetricConfig{
 			"abc_count": {
 				Help: "ABC is abc",
@@ -43,6 +44,11 @@ func TestServer(t *testing.T) {
 				"/api/v1/my-website",
 				"/potato.com/api/v1/fried",
 			}},
+			"user_agent": {
+				Values: []string{
+					"PriceTracker/202505.10.2217",
+				},
+			},
 		},
 		MetricAppendPrefix: "ppp_",
 	}
@@ -56,6 +62,8 @@ func TestServer(t *testing.T) {
 		t.Run("ok", func(t *testing.T) {
 			req := httptest.NewRequest("POST", "/metrics", strings.NewReader(`{"metrics":{"abc_count":10,"wrong":11},"labels":{"platform":"ios"}}`))
 			req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+			req.Header.Set("User-Agent", "PriceTracker/202505.10.2217 (something blabla/1.2.3) CFNetwork/3826.500.111.2.2 Darwin/24.4.0")
+
 			w := httptest.NewRecorder()
 			s.ConsumeMetrics(w, req)
 
@@ -68,6 +76,7 @@ func TestServer(t *testing.T) {
 		t.Run("when bad language, then ignore", func(t *testing.T) {
 			req := httptest.NewRequest("POST", "/metrics", strings.NewReader(`{"metrics":{"abc_count":1},"labels":{"platform":"ios"}}`))
 			req.Header.Set("Accept-Language", "asdf")
+
 			w := httptest.NewRecorder()
 			s.ConsumeMetrics(w, req)
 
@@ -78,7 +87,7 @@ func TestServer(t *testing.T) {
 		})
 
 		t.Run("histogram", func(t *testing.T) {
-			t.Run("from gague", func(t *testing.T) {
+			t.Run("from gauge", func(t *testing.T) {
 				req := httptest.NewRequest("POST", "/metrics", strings.NewReader(`{"metrics": {"my_hist": 5}}`))
 				w := httptest.NewRecorder()
 				s.ConsumeMetrics(w, req)
@@ -366,7 +375,7 @@ func TestServer(t *testing.T) {
 		exp := strings.Join([]string{
 			`# HELP ppp_abc_count ABC is abc`,
 			`# TYPE ppp_abc_count counter`,
-			`ppp_abc_count{lang="en",platform="ios"} 10`,
+			`ppp_abc_count{lang="en",platform="ios",user_agent="PriceTracker/202505.10.2217"} 10`,
 			`ppp_abc_count{platform="ios"} 421`,
 			``,
 			``,
