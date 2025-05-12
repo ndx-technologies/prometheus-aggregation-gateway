@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"maps"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -124,7 +125,7 @@ func (s PromAggGatewayServer) ConsumeMetrics(w http.ResponseWriter, r *http.Requ
 	for name, value := range req.Metrics {
 		metric, labels, err := ParseMetric(name)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, "cannot parse metric("+name+"): "+err.Error(), http.StatusBadRequest)
 			return
 		}
 
@@ -139,7 +140,7 @@ func (s PromAggGatewayServer) ConsumeMetrics(w http.ResponseWriter, r *http.Requ
 
 		if config.Type == Histogram {
 			if strings.HasSuffix(metric, "_bucket") && labels["le"] == "" {
-				http.Error(w, "histogram _bucket metric must have 'le' label", http.StatusBadRequest)
+				http.Error(w, "histogram _bucket metric("+metric+") must have 'le' label, labels: "+strings.Join(slices.Collect(maps.Keys(labels)), ","), http.StatusBadRequest)
 				return
 			}
 		}
