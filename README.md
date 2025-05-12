@@ -12,6 +12,7 @@ This service accepts Prometheus metrics, validetes, aggregates, and exposes them
 - [x] defensive validation
 - [x] histogram[^3]
 - [ ] summary via t-digest[^6]
+- [x] `User-Agent`, `Accept-Language`
 
 Bring it to your own http server
 
