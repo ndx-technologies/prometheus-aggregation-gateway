@@ -16,6 +16,7 @@ import (
 
 func TestServer(t *testing.T) {
 	config := pag.PromAggGatewayServerConfig{
+		LabelLanguage: "lang",
 		Metrics: map[string]pag.MetricConfig{
 			"abc_count": {
 				Help: "ABC is abc",
@@ -53,7 +54,20 @@ func TestServer(t *testing.T) {
 
 	t.Run("consume from HTTP body", func(t *testing.T) {
 		t.Run("ok", func(t *testing.T) {
-			req := httptest.NewRequest("POST", "/metrics", strings.NewReader(`{"metrics":{"abc_count":11,"wrong":11},"labels":{"platform":"ios"}}`))
+			req := httptest.NewRequest("POST", "/metrics", strings.NewReader(`{"metrics":{"abc_count":10,"wrong":11},"labels":{"platform":"ios"}}`))
+			req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+			w := httptest.NewRecorder()
+			s.ConsumeMetrics(w, req)
+
+			resp := w.Result()
+			if resp.StatusCode != http.StatusOK {
+				t.Error(resp.StatusCode)
+			}
+		})
+
+		t.Run("when bad language, then ignore", func(t *testing.T) {
+			req := httptest.NewRequest("POST", "/metrics", strings.NewReader(`{"metrics":{"abc_count":1},"labels":{"platform":"ios"}}`))
+			req.Header.Set("Accept-Language", "asdf")
 			w := httptest.NewRecorder()
 			s.ConsumeMetrics(w, req)
 
@@ -352,7 +366,8 @@ func TestServer(t *testing.T) {
 		exp := strings.Join([]string{
 			`# HELP ppp_abc_count ABC is abc`,
 			`# TYPE ppp_abc_count counter`,
-			`ppp_abc_count{platform="ios"} 431`,
+			`ppp_abc_count{lang="en",platform="ios"} 10`,
+			`ppp_abc_count{platform="ios"} 421`,
 			``,
 			``,
 			`# HELP ppp_my_hit_metric my hit metric`,
@@ -384,7 +399,7 @@ func TestServer(t *testing.T) {
 
 		for line := range bytes.SplitSeq([]byte(exp), []byte("\n")) {
 			if !bytes.Contains(bytes.TrimSpace(body), line) {
-				t.Error("missing line", string(line))
+				t.Error("missing line", string(line), "in", string(body))
 			}
 		}
 	})

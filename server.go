@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/ndx-technologies/prometheus-aggregation-gateway/language"
 )
 
 type LabelConfig struct {
@@ -16,6 +18,7 @@ type LabelConfig struct {
 type PromAggGatewayServerConfig struct {
 	Metrics            map[string]MetricConfig `json:"metrics" yaml:"metrics"`
 	Labels             map[string]LabelConfig  `json:"labels" yaml:"labels"`
+	LabelLanguage      string                  `json:"label_language" yaml:"label_language"`
 	MetricAppendPrefix string                  `json:"metric_append_prefix" yaml:"metric_append_prefix"`
 }
 
@@ -44,6 +47,13 @@ func NewPromAggGatewayServer(config PromAggGatewayServerConfig) PromAggGatewaySe
 
 		c.Init()
 		config.Metrics[m] = c
+	}
+
+	if labelLanguage := config.LabelLanguage; labelLanguage != "" {
+		labelValues[labelLanguage] = make(map[string]bool, len(language.All))
+		for _, l := range language.All {
+			labelValues[labelLanguage][l.String()] = true
+		}
 	}
 
 	return PromAggGatewayServer{
@@ -92,6 +102,12 @@ func (s PromAggGatewayServer) ConsumeMetrics(w http.ResponseWriter, r *http.Requ
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	if labelLanguage := s.config.LabelLanguage; labelLanguage != "" {
+		if l := languageFromHeaders(r); l != language.Unknown {
+			req.Labels[labelLanguage] = l.String()
+		}
 	}
 
 	metrics := make(map[string]map[string]float64)
@@ -236,6 +252,12 @@ func (s PromAggGatewayServer) ConsumeMetricFromURLQuery(w http.ResponseWriter, r
 		return
 	}
 
+	if labelLanguage := s.config.LabelLanguage; labelLanguage != "" {
+		if l := languageFromHeaders(r); l != language.Unknown {
+			labels[labelLanguage] = l.String()
+		}
+	}
+
 	for k, v := range labels {
 		if !(s.labelValues[k][v] || s.labelValuesForMetric[metric][k][v]) {
 			delete(labels, k)
@@ -294,6 +316,12 @@ func (s PromAggGatewayServer) NewMetricFromPathConsumer(metric string, skipPrefi
 			}
 		}
 
+		if labelLanguage := s.config.LabelLanguage; labelLanguage != "" {
+			if l := languageFromHeaders(r); l != language.Unknown {
+				labels[labelLanguage] = l.String()
+			}
+		}
+
 		s.mtx.Lock()
 		defer s.mtx.Unlock()
 
@@ -305,4 +333,18 @@ func (s PromAggGatewayServer) NewMetricFromPathConsumer(metric string, skipPrefi
 
 		w.WriteHeader(http.StatusOK)
 	}
+}
+
+func languageFromHeaders(r *http.Request) language.Language {
+	var lang language.Language
+	var weight float64
+
+	for l, w := range ParseAcceptLanguage(r.Header.Get("Accept-Language")) {
+		if w > weight {
+			weight = w
+			lang = l
+		}
+	}
+
+	return lang
 }
