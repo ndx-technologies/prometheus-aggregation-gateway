@@ -2,7 +2,7 @@
 
 This service accepts Prometheus metrics, validetes, aggregates, and exposes them ready for scraping in `/metrics` endpoint[^4][^5].
 
-- [x] consume batch by JSON http body (aggregation gateway)
+- [x] consume batch by JSON http body
 - [x] consume one by URL Path or Query (hit counter)
 - [x] no dependencies
 - [x] 500LOC
