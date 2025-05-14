@@ -1,4 +1,4 @@
-## prometheus aggregation gateway
+## Prometheus Aggregation Gateway
 
 This service accepts Prometheus metrics, validetes, aggregates, and exposes them ready for scraping in `/metrics` endpoint[^4][^5].
 
