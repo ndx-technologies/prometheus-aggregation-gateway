@@ -36,10 +36,6 @@ func main() {
 ## ADR
 
 - `2025-04-04` URL Query consumes only single metric for simple API (histograms break down into multiple metric names, hence not accepted in URL Query)
-- `2024-12-16` not providing `max`, `min` aggregations, instead encouraging using histograms
-- `2024-12-03` not provide `avg` based on total `sum(x)` / `count(x)`, to reduce complexity in configuration, keep code flexible and small, and this can be done downstream anyways 
-- `2024-12-03` using `_count` in label naming to match open telemetry histograms
-- `2024-12-03` using units in metric name, to keep closer to Prometheus and reduce complexity of API
 - `2024-12-02` not using [Prometheus Pushgateway](https://github.com/prometheus/pushgateway), because it does not aggregate metrics
 - `2024-12-02` not using [zapier](https://github.com/zapier/prom-aggregation-gateway) prom aggregation gateway, because: too many 3rd party dependencies (e.g. gin, cobra); no defensive validation;
 
