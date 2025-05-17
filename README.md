@@ -24,7 +24,6 @@ func main() {
 
 	s := pag.NewPromAggGatewayServer(config)
 
-	http.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	http.HandleFunc("GET /hit", s.ConsumeMetricFromURLQuery)
 	http.HandleFunc("POST /metrics", s.ConsumeMetrics)
 	http.HandleFunc("GET /metrics", s.GetMetrics)
