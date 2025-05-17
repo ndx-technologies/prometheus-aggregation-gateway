@@ -1,6 +1,6 @@
 ## Prometheus Aggregation Gateway
 
-This service accepts Prometheus metrics, validetes, aggregates, and exposes them ready for scraping in `/metrics` endpoint[^4][^5].
+This service accepts Prometheus metrics, validates, aggregates, and exposes them ready for scraping in `/metrics` endpoint[^4][^5].
 
 - [x] consume batch by JSON http body
 - [x] consume one by URL Path or Query (hit counter)
