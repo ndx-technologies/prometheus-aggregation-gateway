@@ -1,5 +1,9 @@
 ## Prometheus Aggregation Gateway
 
+<p align="center">
+  ✨ Sponsored by <a href="https://apps.apple.com/app/id6738306589">NDX AI Shopping Assistant</a>
+</p>
+
 This service accepts Prometheus metrics, validates, aggregates, and exposes them ready for scraping in `/metrics` endpoint[^4][^5].
 
 - [x] consume batch by JSON http body
