@@ -12,6 +12,8 @@ This service accepts Prometheus metrics, validates, aggregates, and exposes them
 - [ ] summary via t-digest[^6]
 - [x] `User-Agent`, `Accept-Language`
 
+[![codecov](https://codecov.io/github/ndx-technologies/prometheus-aggregation-gateway/graph/badge.svg?token=SP60Z9GDZA)](https://codecov.io/github/ndx-technologies/prometheus-aggregation-gateway)
+
 Bring it to your own http server
 
 ```go
