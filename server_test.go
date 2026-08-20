@@ -414,6 +414,69 @@ func TestServer(t *testing.T) {
 	})
 }
 
+func TestAlwaysRespondOk(t *testing.T) {
+	config := pag.PromAggGatewayServerConfig{
+		AlwaysRespondOk: true,
+		Metrics: map[string]pag.MetricConfig{
+			"my_hist": {
+				Help:             "about my hist",
+				Type:             pag.Histogram,
+				ComputeFromGauge: true,
+				Buckets:          []float64{10, 20},
+			},
+			"url_hit": {
+				Help: "url hit",
+				Type: pag.Counter,
+			},
+		},
+		Labels: map[string]pag.LabelConfig{
+			"path": {Values: []string{"/ok"}},
+		},
+	}
+	s := pag.NewPromAggGatewayServer(config)
+
+	t.Run("consume from HTTP body", func(t *testing.T) {
+		for _, body := range []string{
+			`asdf`,
+			`{"metrics":{"":11}}`,
+			`{"metrics":{"my_hist_bucket{le=\"asdf\"}":10}}`,
+		} {
+			req := httptest.NewRequest("POST", "/metrics", strings.NewReader(body))
+			w := httptest.NewRecorder()
+			s.ConsumeMetrics(w, req)
+
+			if w.Result().StatusCode != http.StatusOK {
+				t.Errorf("%s: got %d, want %d", body, w.Result().StatusCode, http.StatusOK)
+			}
+		}
+	})
+
+	t.Run("consume from URL query", func(t *testing.T) {
+		for _, target := range []string{
+			"/hit?m=my_hit_metric&v=blablabla",
+			"/hit?m=blablabla",
+		} {
+			req := httptest.NewRequest("GET", target, nil)
+			w := httptest.NewRecorder()
+			s.ConsumeMetricFromURLQuery(w, req)
+
+			if w.Result().StatusCode != http.StatusOK {
+				t.Errorf("%s: got %d, want %d", target, w.Result().StatusCode, http.StatusOK)
+			}
+		}
+	})
+
+	t.Run("consume from URL path", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/hit/wrong", nil)
+		w := httptest.NewRecorder()
+		s.NewMetricFromPathConsumer("url_hit", "/hit")(w, req)
+
+		if w.Result().StatusCode != http.StatusOK {
+			t.Errorf("got %d, want %d", w.Result().StatusCode, http.StatusOK)
+		}
+	})
+}
+
 func Example_urlQueryEscape() {
 	s := url.QueryEscape("my_hit_metric{path=\"/api/v1/my-website\"}")
 	fmt.Println(s)

@@ -144,8 +144,18 @@ func PrintMetric(w io.Writer, prefix string, name string, config MetricConfig, v
 
 	b := bufio.NewWriterSize(w, (len(prefix)+len(name)+10)*3+len(values[name])*8)
 
-	b.WriteString("# HELP " + prefix + name + " " + config.Help + "\n")
-	b.WriteString("# TYPE " + prefix + name + " " + config.Type.String() + "\n")
+	b.WriteString("# HELP ")
+	b.WriteString(prefix)
+	b.WriteString(name)
+	b.WriteString(" ")
+	b.WriteString(config.Help)
+	b.WriteString("\n")
+	b.WriteString("# TYPE ")
+	b.WriteString(prefix)
+	b.WriteString(name)
+	b.WriteString(" ")
+	b.WriteString(config.Type.String())
+	b.WriteString("\n")
 
 	if config.Type == Histogram {
 		printMetric(b, prefix, name, "_bucket", values)

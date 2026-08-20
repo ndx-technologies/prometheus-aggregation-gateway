@@ -2,6 +2,7 @@ package pag
 
 import (
 	"encoding/json"
+	"log/slog"
 	"maps"
 	"net/http"
 	"slices"
@@ -22,6 +23,7 @@ type PromAggGatewayServerConfig struct {
 	LabelLanguage      string                  `json:"label_language" yaml:"label_language"`     // set to non-empty value to extract from Accept-Language header
 	LabelUserAgent     string                  `json:"label_user_agent" yaml:"label_user_agent"` // set to non-empty and specify allowed values to extract from User-Agent header
 	MetricAppendPrefix string                  `json:"metric_append_prefix" yaml:"metric_append_prefix"`
+	AlwaysRespondOk    bool                    `json:"always_respond_ok"`
 }
 
 type PromAggGatewayServer struct {
@@ -104,13 +106,22 @@ type MetricsRequest struct {
 	Labels  map[string]string  `json:"labels"`  // additional labels to be added to all metrics
 }
 
+func (s PromAggGatewayServer) error(w http.ResponseWriter, r *http.Request, status int, msg string) {
+	slog.ErrorContext(r.Context(), msg, "status", status)
+	if s.config.AlwaysRespondOk {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	http.Error(w, msg, status)
+}
+
 // ConsumeMetrics from body of HTTP request
 func (s PromAggGatewayServer) ConsumeMetrics(w http.ResponseWriter, r *http.Request) {
 	var req MetricsRequest
 
 	defer r.Body.Close()
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		s.error(w, r, http.StatusBadRequest, "cannot decode body: "+err.Error())
 		return
 	}
 
@@ -126,6 +137,10 @@ func (s PromAggGatewayServer) ConsumeMetrics(w http.ResponseWriter, r *http.Requ
 	for name, value := range req.Metrics {
 		metric, labels, err := ParseMetric(name)
 		if err != nil {
+			if s.config.AlwaysRespondOk {
+				slog.ErrorContext(r.Context(), "cannot parse metric", "metric", name, "error", err)
+				continue
+			}
 			http.Error(w, "cannot parse metric("+name+"): "+err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -141,6 +156,10 @@ func (s PromAggGatewayServer) ConsumeMetrics(w http.ResponseWriter, r *http.Requ
 
 		if config.Type == Histogram {
 			if strings.HasSuffix(metric, "_bucket") && labels["le"] == "" {
+				if s.config.AlwaysRespondOk {
+					slog.ErrorContext(r.Context(), "histogram _bucket metric must have 'le' label", "metric", metric, "labels", slices.Collect(maps.Keys(labels)))
+					continue
+				}
 				http.Error(w, "histogram _bucket metric("+metric+") must have 'le' label, labels: "+strings.Join(slices.Collect(maps.Keys(labels)), ","), http.StatusBadRequest)
 				return
 			}
@@ -246,7 +265,7 @@ func (s PromAggGatewayServer) ConsumeMetricFromURLQuery(w http.ResponseWriter, r
 	if vs := query.Get("v"); len(vs) > 0 {
 		vv, err := strconv.ParseFloat(vs, 64)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			s.error(w, r, http.StatusBadRequest, err.Error())
 			return
 		}
 		v = vv
@@ -254,12 +273,12 @@ func (s PromAggGatewayServer) ConsumeMetricFromURLQuery(w http.ResponseWriter, r
 
 	metric, labels, err := ParseMetric(query.Get("m"))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		s.error(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	if _, ok := s.config.Metrics[metric]; !ok {
-		w.WriteHeader(http.StatusNotFound)
+		s.error(w, r, http.StatusNotFound, "metric not found: "+metric)
 		return
 	}
 
@@ -269,7 +288,6 @@ func (s PromAggGatewayServer) ConsumeMetricFromURLQuery(w http.ResponseWriter, r
 
 	s.processLanguage(r, labels)
 	s.processUserAgent(r, labels)
-
 	s.processLabels(metric, labels, nil)
 
 	s.mtx.Lock()
@@ -300,7 +318,7 @@ func (s PromAggGatewayServer) NewMetricFromPathConsumer(metric string, skipPrefi
 		if vs := query.Get("v"); len(vs) > 0 {
 			vv, err := strconv.ParseFloat(vs, 64)
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				s.error(w, r, http.StatusBadRequest, err.Error())
 				return
 			}
 			delete(query, "v")
@@ -309,7 +327,7 @@ func (s PromAggGatewayServer) NewMetricFromPathConsumer(metric string, skipPrefi
 
 		path := strings.TrimPrefix(r.URL.Path, skipPrefix)
 		if !(s.labelValues["path"][path] || s.labelValuesForMetric[metric]["path"][path]) {
-			http.Error(w, "URL Path is not allowed label", http.StatusBadRequest)
+			s.error(w, r, http.StatusBadRequest, "URL Path is not allowed label")
 			return
 		}
 
